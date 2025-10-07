@@ -6,6 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "opennextjs-cloudflare build",
     "build-local": "next build",
+    "deploy": "opennextjs-cloudflare deploy",
+    "preview": "opennextjs-cloudflare preview",
     "start": "next start",
     "lint": "eslint"
   },

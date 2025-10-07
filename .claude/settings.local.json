@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(timeout 10 npm run build:*)",
-      "Bash(gtimeout 10 npm run build)"
+      "Bash(gtimeout 10 npm run build)",
+      "WebFetch(domain:opennext.js.org)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
