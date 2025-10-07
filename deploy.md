@@ -7,7 +7,7 @@ npx create-next-app@latest my-nextauth-app
 cd my-nextauth-app
 ```
 
------
+---
 
 ## Step 2: Add and Configure NextAuth.js
 
@@ -24,23 +24,23 @@ Next, add `next-auth` and set up the authentication API route.
     ```typescript
     // file: app/api/auth/[...nextauth]/route.ts
 
-    import NextAuth from 'next-auth';
-    import GithubProvider from 'next-auth/providers/github';
+    import NextAuth from "next-auth";
+    import GithubProvider from "next-auth/providers/github";
 
     const handler = NextAuth({
       providers: [
         GithubProvider({
           clientId: process.env.GITHUB_ID!,
-          clientSecret: process.env.GITHUB_SECRET!,
-        }),
+          clientSecret: process.env.GITHUB_SECRET!
+        })
       ],
-      secret: process.env.NEXTAUTH_SECRET,
+      secret: process.env.NEXTAUTH_SECRET
     });
 
     export { handler as GET, handler as POST };
     ```
 
------
+---
 
 ## Step 3: Integrate the OpenNext Adapter
 
@@ -64,7 +64,7 @@ This step prepares your Next.js app for Cloudflare using the correct OpenNext pa
     },
     ```
 
------
+---
 
 ## Step 4: Manage Production Secrets with Wrangler
 
@@ -78,13 +78,17 @@ Securely store your production secrets in Cloudflare's infrastructure using Wran
 
 2.  **Set your secrets one by one**: Run the command for each secret. Wrangler will prompt you to securely paste in the value.
 
-    ```bash
-    npx wrangler secret put GITHUB_ID
-    npx wrangler secret put GITHUB_SECRET
-    npx wrangler secret put NEXTAUTH_SECRET
-    ```
+```bash
+## set secrets
+wrangler pages secret put GITHUB_ID
+wrangler pages secret put GITHUB_SECRET
+wrangler pages secret put NEXTAUTH_SECRET
 
------
+## verify secrets
+wrangler pages secret list
+```
+
+---
 
 ## Step 5: Develop Locally
 
@@ -109,18 +113,18 @@ Use Wrangler to accurately simulate the Cloudflare environment on your local mac
 
 3.  **Run the local development server**:
 
-      * First, build the project with OpenNext:
-        ```bash
-        npm run build
-        ```
-      * Then, start the Wrangler development server:
-        ```bash
-        npx wrangler pages dev .open-next/server-function
-        ```
+    - First, build the project with OpenNext:
+      ```bash
+      npm run build
+      ```
+    - Then, start the Wrangler development server:
+      ```bash
+      npx wrangler pages dev .open-next/server-function
+      ```
 
     You can now test your full application at **`http://localhost:8788`**.
 
------
+---
 
 ## Step 6: Deploy to Cloudflare Pages
 
@@ -130,26 +134,27 @@ Finally, connect your GitHub repository to Cloudflare for automated deployments.
 
 2.  **Connect to Cloudflare Pages**:
 
-      * In the Cloudflare dashboard, go to **Workers & Pages** and **Create a project**.
-      * Select **Connect to Git** and choose your GitHub repository.
+    - In the Cloudflare dashboard, go to **Workers & Pages** and **Create a application**.
+    - Select 'Pages' tab and then click on 'Import an existing Git repository'.
 
 3.  **Configure Build Settings**: Use the following configuration:
-
-      * **Build command**: `npm run build`
-      * **Build output directory**: `.open-next/server-function`
+    - **Framework preset**: Next.js
+    - **Build command**: `npm run build`
+    - **Build output directory**: `.open-next/server-function`
+    And then you can deploy your application.
 
 4.  **Set Production Environment Variables**: Go to your new project's **Settings** -\> **Environment variables**. Your secrets are already handled by Wrangler, but you **must** add the `NEXTAUTH_URL`.
 
-      * **Variable name**: `NEXTAUTH_URL`
-      * **Value**: Your final production URL (e.g., `https://your-app-name.pages.dev`)
+    - **Variable name**: `NEXTAUTH_URL`
+    - **Value**: Your final production URL (e.g., `https://your-app-name.pages.dev`)
 
 5.  **Update your OAuth Provider**: Go to your GitHub OAuth App settings and add the production callback URL:
 
-      * `https://your-app-name.pages.dev/api/auth/callback/github`
+    - `https://your-app-name.pages.dev/api/auth/callback/github`
 
 Click **Save and Deploy**. Your application is now live, and any future push to your main branch will automatically trigger a new deployment. 🎉
 
------
+---
 
 ## Appendix 1: Getting GitHub OAuth Credentials
 
@@ -157,25 +162,25 @@ To use GitHub for authentication, you need to register an OAuth application on g
 
 1.  **Navigate to Developer Settings**
 
-      * Log in to your GitHub account.
-      * Click on your profile picture in the top-right corner and select **Settings**.
-      * In the left sidebar, scroll down and click on **Developer settings**.
+    - Log in to your GitHub account.
+    - Click on your profile picture in the top-right corner and select **Settings**.
+    - In the left sidebar, scroll down and click on **Developer settings**.
 
 2.  **Register a New OAuth Application**
 
-      * Click on **OAuth Apps**, then click the **New OAuth App** button.
-      * Fill out the registration form:
-          * **Application name**: Something descriptive, like `My Cloudflare App`.
-          * **Homepage URL**: The main URL of your application. For development, you can use your Wrangler URL (`http://localhost:8788`). For production, use your final Cloudflare Pages URL (`https://your-app-name.pages.dev`).
-          * **Authorization callback URL**: This is the most important field. NextAuth.js uses a specific URL format. You should add one for development and one for production.
-              * **Development**: `http://localhost:8788/api/auth/callback/github`
-              * **Production**: `https://your-app-name.pages.dev/api/auth/callback/github`
+    - Click on **OAuth Apps**, then click the **New OAuth App** button.
+    - Fill out the registration form:
+      - **Application name**: Something descriptive, like `My Cloudflare App`.
+      - **Homepage URL**: The main URL of your application. For development, you can use your Wrangler URL (`http://localhost:8788`). For production, use your final Cloudflare Pages URL (`https://your-app-name.pages.dev`).
+      - **Authorization callback URL**: This is the most important field. NextAuth.js uses a specific URL format. You should add one for development and one for production.
+        - **Development**: `http://localhost:8788/api/auth/callback/github`
+        - **Production**: `https://your-app-name.pages.dev/api/auth/callback/github`
 
 3.  **Generate and Copy Your Credentials**
 
-      * After clicking **Register application**, you'll be taken to your new app's page.
-      * The **Client ID** (this is your `GITHUB_ID`) will be visible on the page.
-      * Click the **Generate a new client secret** button.
-      * **Important**: Copy your new **Client Secret** (`GITHUB_SECRET`) immediately. **You will not be able to see this value again after you leave the page.**
+    - After clicking **Register application**, you'll be taken to your new app's page.
+    - The **Client ID** (this is your `GITHUB_ID`) will be visible on the page.
+    - Click the **Generate a new client secret** button.
+    - **Important**: Copy your new **Client Secret** (`GITHUB_SECRET`) immediately. **You will not be able to see this value again after you leave the page.**
 
 You now have the `GITHUB_ID` and `GITHUB_SECRET` values needed for your `.dev.vars` file and your Wrangler secrets.

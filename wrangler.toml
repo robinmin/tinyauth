@@ -1,0 +1,3 @@
+name = "tinyauth"
+compatibility_date = "2025-10-07"
+pages_build_output_dir = ".open-next/server-function"
