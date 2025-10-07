@@ -2,6 +2,21 @@
 
 > **Important**: This guide uses `@opennextjs/cloudflare` which deploys to **Cloudflare Workers**, not Cloudflare Pages. Workers provide a serverless runtime environment that's ideal for Next.js applications with authentication.
 
+## Quick Reference: OAuth Providers
+
+This application supports multiple OAuth providers. You can use one or all of them:
+
+| Provider | Required Secrets | Callback URL Pattern | Setup Guide |
+|----------|------------------|----------------------|-------------|
+| **GitHub** | `GITHUB_ID`, `GITHUB_SECRET` | `/api/auth/callback/github` | [Appendix 1](#appendix-1-getting-github-oauth-credentials) |
+| **Google** | `GOOGLE_ID`, `GOOGLE_SECRET` | `/api/auth/callback/google` | [Appendix 2](#appendix-2-getting-google-oauth-credentials) |
+
+**Required for all providers:**
+- `NEXTAUTH_SECRET` - Random string for signing tokens (generate with `openssl rand -base64 32`)
+- `NEXTAUTH_URL` - Your application URL
+
+---
+
 ## Step 1: Create Your Next.js Project
 
 First, create a new Next.js application.
@@ -30,12 +45,17 @@ npm install next-auth
 
 import NextAuth from "next-auth";
 import GithubProvider from "next-auth/providers/github";
+import GoogleProvider from "next-auth/providers/google";
 
 const handler = NextAuth({
   providers: [
     GithubProvider({
       clientId: process.env.GITHUB_ID!,
       clientSecret: process.env.GITHUB_SECRET!
+    }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_ID!,
+      clientSecret: process.env.GOOGLE_SECRET!
     })
   ],
   secret: process.env.NEXTAUTH_SECRET
@@ -43,6 +63,8 @@ const handler = NextAuth({
 
 export { handler as GET, handler as POST };
 ```
+
+This example includes both GitHub and Google OAuth providers. You can use one or both depending on your needs.
 
 ---
 
@@ -144,6 +166,8 @@ npx wrangler login
 ## set secrets for Workers
 npx wrangler secret put GITHUB_ID
 npx wrangler secret put GITHUB_SECRET
+npx wrangler secret put GOOGLE_ID
+npx wrangler secret put GOOGLE_SECRET
 npx wrangler secret put NEXTAUTH_SECRET
 npx wrangler secret put NEXTAUTH_URL
 ```
@@ -168,8 +192,10 @@ Use Wrangler to accurately simulate the Cloudflare Workers environment on your l
 # Variables for local Cloudflare Workers simulation
 GITHUB_ID="your_github_client_id"
 GITHUB_SECRET="your_github_client_secret"
+GOOGLE_ID="your_google_client_id"
+GOOGLE_SECRET="your_google_client_secret"
 NEXTAUTH_SECRET="a_very_secure_random_string_generated_for_local_use"
-NEXTAUTH_URL="http://localhost:8787"
+NEXTAUTH_URL="http://localhost:3000"
 ```
 
 2.  **Add `.dev.vars` to `.gitignore`**: Ensure this file is never committed to your repository.
@@ -324,15 +350,21 @@ git push origin main
 ```bash
 npx wrangler secret put GITHUB_ID
 npx wrangler secret put GITHUB_SECRET
+npx wrangler secret put GOOGLE_ID
+npx wrangler secret put GOOGLE_SECRET
 npx wrangler secret put NEXTAUTH_SECRET
 npx wrangler secret put NEXTAUTH_URL
 ```
 
 For `NEXTAUTH_URL`, use your Worker URL (e.g., `https://tinyauth.<your-subdomain>.workers.dev`)
 
-6.  **Update your OAuth Provider**: Go to your GitHub OAuth App settings and add the production callback URL:
+6.  **Update your OAuth Providers**:
 
-- `https://tinyauth.<your-subdomain>.workers.dev/api/auth/callback/github`
+   **GitHub**: Go to your GitHub OAuth App settings and add the production callback URL:
+   - `https://tinyauth.<your-subdomain>.workers.dev/api/auth/callback/github`
+
+   **Google**: In Google Cloud Console, add to **Authorized redirect URIs**:
+   - `https://tinyauth.<your-subdomain>.workers.dev/api/auth/callback/google`
 
 Now, any push to your main branch will automatically trigger a new deployment! 🎉
 
@@ -379,7 +411,82 @@ You now have the `GITHUB_ID` and `GITHUB_SECRET` values needed for your `.dev.va
 
 ---
 
-## Appendix 2: Troubleshooting Common Issues
+## Appendix 2: Getting Google OAuth Credentials
+
+To use Google for authentication, you need to create OAuth credentials in Google Cloud Console.
+
+### 1. Create a Google Cloud Project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Click **Select a project** → **New Project**
+3. Enter a project name (e.g., "TinyAuth")
+4. Click **Create**
+
+### 2. Configure OAuth Consent Screen
+
+1. In the left sidebar, go to **APIs & Services** → **OAuth consent screen**
+2. Select **External** user type and click **Create**
+3. Fill in the required information:
+   - **App name**: TinyAuth (or your app name)
+   - **User support email**: Your email address
+   - **Developer contact information**: Your email address
+4. Click **Save and Continue**
+5. On the **Scopes** page, click **Save and Continue** (default scopes are fine)
+6. On the **Test users** page, add your email for testing, then click **Save and Continue**
+7. Review and click **Back to Dashboard**
+
+### 3. Create OAuth 2.0 Credentials
+
+1. Go to **APIs & Services** → **Credentials**
+2. Click **Create Credentials** → **OAuth client ID**
+3. Select **Application type**: **Web application**
+4. Enter a name: "TinyAuth Web Client"
+5. **Authorized JavaScript origins** (optional):
+   - Add `http://localhost:3000` (for development)
+   - Add `https://tinyauth.<your-subdomain>.workers.dev` (for production)
+6. **Authorized redirect URIs** (required):
+   - Development: `http://localhost:3000/api/auth/callback/google`
+   - Production: `https://tinyauth.<your-subdomain>.workers.dev/api/auth/callback/google`
+7. Click **Create**
+
+### 4. Copy Your Credentials
+
+After creating the OAuth client:
+
+1. A dialog will show your **Client ID** and **Client secret**
+2. Copy the **Client ID** (this is your `GOOGLE_ID`)
+3. Copy the **Client secret** (this is your `GOOGLE_SECRET`)
+4. You can always access these later from the **Credentials** page
+
+**Important**: Keep your client secret secure. If it's ever compromised, you can regenerate it from the Credentials page.
+
+### 5. Add Credentials to Your Application
+
+**For local development**, add to `.dev.vars`:
+```toml
+GOOGLE_ID="your_google_client_id.apps.googleusercontent.com"
+GOOGLE_SECRET="your_google_client_secret"
+```
+
+**For production**, use Wrangler:
+```bash
+npx wrangler secret put GOOGLE_ID
+npx wrangler secret put GOOGLE_SECRET
+```
+
+### 6. Publishing Your App (Optional)
+
+If you want to move from testing to production:
+
+1. Go to **OAuth consent screen**
+2. Click **Publish App**
+3. Follow the verification process if you need more than 100 users
+
+For most internal or small applications, staying in "Testing" mode is sufficient.
+
+---
+
+## Appendix 3: Troubleshooting Common Issues
 
 ### Infinite Build Loop
 
@@ -574,7 +681,8 @@ After deploying to Cloudflare Workers, verify it's working correctly:
    # Test NextAuth providers endpoint
    curl https://tinyauth.<your-subdomain>.workers.dev/api/auth/providers
 
-   # Expected response: {"github":{"id":"github","name":"GitHub","type":"oauth",...}}
+   # Expected response: {"github":{...},"google":{...}}
+   # Should show both GitHub and Google providers
    ```
 
 3. **Test with different methods**:
@@ -704,7 +812,13 @@ PROVIDERS=$(curl -s "$WORKER_URL/api/auth/providers")
 if echo "$PROVIDERS" | grep -q "github"; then
   echo "✅ NextAuth GitHub provider configured"
 else
-  echo "⚠️  NextAuth might not be configured correctly"
+  echo "⚠️  GitHub provider not found"
+fi
+
+if echo "$PROVIDERS" | grep -q "google"; then
+  echo "✅ NextAuth Google provider configured"
+else
+  echo "⚠️  Google provider not found"
 fi
 
 echo "Health check complete!"
