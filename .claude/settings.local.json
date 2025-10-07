@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 10 npm run build:*)",
+      "Bash(gtimeout 10 npm run build)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
