@@ -6,3 +6,13 @@ compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
+
+# R2 bucket for incremental cache (ISR)
+[[r2_buckets]]
+binding = "NEXT_INC_CACHE_R2_BUCKET"
+bucket_name = "tinyauth-cache"
+
+# Self-reference service binding for cache
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "tinyauth"

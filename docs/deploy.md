@@ -101,6 +101,16 @@ compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
+
+# R2 bucket for incremental cache (ISR)
+[[r2_buckets]]
+binding = "NEXT_INC_CACHE_R2_BUCKET"
+bucket_name = "tinyauth-cache"
+
+# Self-reference service binding for cache
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "tinyauth"
 ```
 
 5.  **Update `next.config.ts`**: Add output file tracing configuration.
@@ -187,7 +197,35 @@ npm run preview
 
 ---
 
-## Step 6: Deploy to Cloudflare Workers
+## Step 6: Create R2 Bucket for Caching
+
+Before deploying, you need to create an R2 bucket for incremental static regeneration (ISR) caching.
+
+1.  **Log in to Wrangler** (if not already logged in):
+
+```bash
+npx wrangler login
+```
+
+2.  **Create the R2 bucket**:
+
+```bash
+npx wrangler r2 bucket create tinyauth-cache
+```
+
+This creates a bucket named `tinyauth-cache` that matches the configuration in `wrangler.toml`.
+
+3.  **Verify the bucket was created**:
+
+```bash
+npx wrangler r2 bucket list
+```
+
+You should see `tinyauth-cache` in the list.
+
+---
+
+## Step 7: Deploy to Cloudflare Workers
 
 You have two options for deploying to Cloudflare Workers: manual deployment or automated deployment via GitHub Actions.
 
@@ -228,7 +266,18 @@ Your application is now live! 🎉
 - Value: Paste your Cloudflare API token
 - Click **Add secret**
 
-3.  **Create GitHub Actions workflow**: Create `.github/workflows/deploy.yml`:
+or you can use the following command to add the secret:
+```bash
+gh secret set CLOUDFLARE_API_TOKEN -b "$(cat ~/.cloudflare/api-token)"
+```
+
+3.  **Create the R2 bucket** (one-time setup):
+
+```bash
+npx wrangler r2 bucket create tinyauth-cache
+```
+
+4.  **Create GitHub Actions workflow**: Create `.github/workflows/deploy.yml`:
 
 ```yaml
 # file: .github/workflows/deploy.yml
@@ -414,6 +463,42 @@ For non-sensitive values, add them to `wrangler.toml`:
 PUBLIC_API_URL = "https://api.example.com"
 ```
 
+### R2 Bucket Binding Error
+
+**Problem**: Deployment fails with "No R2 binding 'NEXT_INC_CACHE_R2_BUCKET' found!"
+
+**Solution**: Create the R2 bucket and ensure `wrangler.toml` is configured correctly.
+
+1. **Create the R2 bucket**:
+   ```bash
+   npx wrangler r2 bucket create tinyauth-cache
+   ```
+
+2. **Verify `wrangler.toml` has the correct configuration**:
+   ```toml
+   [[r2_buckets]]
+   binding = "NEXT_INC_CACHE_R2_BUCKET"
+   bucket_name = "tinyauth-cache"
+
+   [[services]]
+   binding = "WORKER_SELF_REFERENCE"
+   service = "tinyauth"
+   ```
+
+3. **Verify the bucket exists**:
+   ```bash
+   npx wrangler r2 bucket list
+   ```
+
+4. **Alternative: Use dummy cache for testing** (not recommended for production):
+
+   Update `open-next.config.ts`:
+   ```typescript
+   export default defineCloudflareConfig({
+     incrementalCache: "dummy",  // Disables caching
+   });
+   ```
+
 ### Switching from Pages to Workers
 
 **Problem**: You initially configured for Cloudflare Pages and need to switch.
@@ -421,8 +506,9 @@ PUBLIC_API_URL = "https://api.example.com"
 **Solution**:
 1. Update `wrangler.toml` to use Workers configuration (see Step 3)
 2. Remove `pages_build_output_dir` from `wrangler.toml`
-3. Use `wrangler secret put` instead of Pages secrets
-4. Deploy using `npm run deploy` or GitHub Actions
+3. Add R2 bucket binding (see above)
+4. Use `wrangler secret put` instead of Pages secrets
+5. Deploy using `npm run deploy` or GitHub Actions
 
 ---
 
@@ -432,6 +518,231 @@ PUBLIC_API_URL = "https://api.example.com"
 - [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
 - [NextAuth.js Documentation](https://next-auth.js.org/)
 - [Wrangler CLI Documentation](https://developers.cloudflare.com/workers/wrangler/)
+
+---
+
+## Appendix 3: Testing and Verifying Your Worker
+
+### Testing Locally
+
+Before deploying, test your Worker locally to ensure it's working correctly.
+
+1. **Build and preview**:
+   ```bash
+   npm run build
+   npm run preview
+   ```
+
+2. **Test with curl**:
+   ```bash
+   # Test the homepage
+   curl http://localhost:8787
+
+   # Test with headers
+   curl -I http://localhost:8787
+
+   # Test the API route
+   curl http://localhost:8787/api/auth/providers
+
+   # Test with verbose output
+   curl -v http://localhost:8787
+   ```
+
+3. **Test in browser**:
+   - Open `http://localhost:8787` in your browser
+   - Check the Network tab in DevTools to see requests/responses
+   - Verify static assets are loading correctly
+
+### Testing Production Deployment
+
+After deploying to Cloudflare Workers, verify it's working correctly:
+
+1. **Basic connectivity test**:
+   ```bash
+   # Replace with your actual Worker URL
+   curl https://tinyauth.<your-subdomain>.workers.dev
+
+   # Get response headers
+   curl -I https://tinyauth.<your-subdomain>.workers.dev
+
+   # Check for redirects
+   curl -L https://tinyauth.<your-subdomain>.workers.dev
+   ```
+
+2. **Test specific routes**:
+   ```bash
+   # Test NextAuth providers endpoint
+   curl https://tinyauth.<your-subdomain>.workers.dev/api/auth/providers
+
+   # Expected response: {"github":{"id":"github","name":"GitHub","type":"oauth",...}}
+   ```
+
+3. **Test with different methods**:
+   ```bash
+   # POST request
+   curl -X POST https://tinyauth.<your-subdomain>.workers.dev/api/auth/signin
+
+   # With JSON data
+   curl -X POST https://tinyauth.<your-subdomain>.workers.dev/api/auth/callback/credentials \
+     -H "Content-Type: application/json" \
+     -d '{"username":"test","password":"test"}'
+   ```
+
+4. **Check response times**:
+   ```bash
+   # Measure response time
+   curl -w "\nTime: %{time_total}s\n" https://tinyauth.<your-subdomain>.workers.dev
+
+   # Multiple requests to check cold start vs warm
+   for i in {1..5}; do
+     curl -w "Request $i: %{time_total}s\n" -o /dev/null -s https://tinyauth.<your-subdomain>.workers.dev
+   done
+   ```
+
+### Using HTTPie (Alternative to curl)
+
+If you prefer a more user-friendly tool, install [HTTPie](https://httpie.io/):
+
+```bash
+# Install HTTPie
+brew install httpie  # macOS
+# or
+pip install httpie  # Python
+
+# Test your Worker
+http https://tinyauth.<your-subdomain>.workers.dev
+
+# Test with headers
+http https://tinyauth.<your-subdomain>.workers.dev User-Agent:TestBot
+
+# Pretty print JSON response
+http https://tinyauth.<your-subdomain>.workers.dev/api/auth/providers
+```
+
+### Monitoring and Debugging
+
+1. **View live logs**:
+   ```bash
+   # Stream Worker logs in real-time
+   npx wrangler tail
+
+   # Filter logs
+   npx wrangler tail --status error
+
+   # Show specific number of logs
+   npx wrangler tail --format pretty
+   ```
+
+2. **Check Worker status**:
+   ```bash
+   # List all Workers
+   npx wrangler list
+
+   # Get Worker details
+   npx wrangler deployments list
+   ```
+
+3. **Test from different locations**:
+   ```bash
+   # Use a service to test from multiple locations
+   # Example with curl from different IPs (using a VPN or proxy)
+   curl --interface <your-vpn-interface> https://tinyauth.<your-subdomain>.workers.dev
+   ```
+
+### Common Test Scenarios
+
+```bash
+# 1. Verify SSL/TLS is working
+curl -v https://tinyauth.<your-subdomain>.workers.dev 2>&1 | grep -i ssl
+
+# 2. Check if CORS headers are set (if needed)
+curl -I -X OPTIONS https://tinyauth.<your-subdomain>.workers.dev \
+  -H "Origin: https://example.com" \
+  -H "Access-Control-Request-Method: GET"
+
+# 3. Test error handling
+curl https://tinyauth.<your-subdomain>.workers.dev/nonexistent-page
+
+# 4. Verify static assets
+curl -I https://tinyauth.<your-subdomain>.workers.dev/favicon.ico
+
+# 5. Test OAuth flow (redirects)
+curl -L https://tinyauth.<your-subdomain>.workers.dev/api/auth/signin/github
+
+# 6. Check response compression
+curl -H "Accept-Encoding: gzip" -I https://tinyauth.<your-subdomain>.workers.dev
+```
+
+### Automated Health Checks
+
+Create a simple health check script:
+
+```bash
+#!/bin/bash
+# save as check-worker.sh
+
+WORKER_URL="https://tinyauth.<your-subdomain>.workers.dev"
+
+echo "Checking Worker health..."
+
+# Check if Worker is responding
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" $WORKER_URL)
+
+if [ $STATUS -eq 200 ]; then
+  echo "✅ Worker is UP (HTTP $STATUS)"
+else
+  echo "❌ Worker is DOWN or ERROR (HTTP $STATUS)"
+  exit 1
+fi
+
+# Check response time
+RESPONSE_TIME=$(curl -s -w "%{time_total}" -o /dev/null $WORKER_URL)
+echo "⏱️  Response time: ${RESPONSE_TIME}s"
+
+# Check if NextAuth is configured
+PROVIDERS=$(curl -s "$WORKER_URL/api/auth/providers")
+if echo "$PROVIDERS" | grep -q "github"; then
+  echo "✅ NextAuth GitHub provider configured"
+else
+  echo "⚠️  NextAuth might not be configured correctly"
+fi
+
+echo "Health check complete!"
+```
+
+Make it executable and run:
+```bash
+chmod +x check-worker.sh
+./check-worker.sh
+```
+
+### Troubleshooting Connection Issues
+
+If curl tests fail:
+
+1. **DNS propagation**: Wait a few minutes after deployment for DNS to propagate
+   ```bash
+   # Check DNS resolution
+   nslookup tinyauth.<your-subdomain>.workers.dev
+   dig tinyauth.<your-subdomain>.workers.dev
+   ```
+
+2. **Certificate issues**: Ensure SSL/TLS is working
+   ```bash
+   # Test SSL certificate
+   openssl s_client -connect tinyauth.<your-subdomain>.workers.dev:443 -servername tinyauth.<your-subdomain>.workers.dev
+   ```
+
+3. **Worker errors**: Check Wrangler logs
+   ```bash
+   npx wrangler tail --status error
+   ```
+
+4. **Network restrictions**: Try from different networks/locations
+   ```bash
+   # Use a different DNS resolver
+   curl --dns-servers 8.8.8.8 https://tinyauth.<your-subdomain>.workers.dev
+   ```
 
 ---
 
@@ -450,4 +761,11 @@ npx wrangler login       # Authenticate with Cloudflare
 npx wrangler secret put  # Set production secrets
 npx wrangler secret list # List configured secrets
 npx wrangler tail        # View live Worker logs
+
+# Testing
+curl http://localhost:8787                                    # Test local Worker
+curl https://tinyauth.<your-subdomain>.workers.dev           # Test production
+curl https://tinyauth.<your-subdomain>.workers.dev/api/auth/providers  # Test NextAuth
+npx wrangler tail        # Monitor real-time logs
+npx wrangler deployments list  # Check deployment history
 ```
